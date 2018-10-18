@@ -447,7 +447,7 @@ fail:
  * XMA1/XMA2/WMAPRO data only differs in the packet headers.
  */
 static void ms_audio_get_samples(ms_sample_data * msd, STREAMFILE *streamFile, int start_packet, int channels_per_packet, int bytes_per_packet, int samples_per_frame, int samples_per_subframe, int bits_frame_size) {
-    int frames = 0, samples = 0, loop_start_frame = 0, loop_end_frame = 0, start_skip = 0, end_skip = 0;
+    int frames = 0, samples = 0, loop_start_frame = 0, loop_end_frame = 0, start_skip = 0;
 
     size_t first_frame_b, packet_skip_count = 0, frame_size_b, packet_size_b, header_size_b;
     off_t offset_b, packet_offset_b, frame_offset_b;
@@ -579,14 +579,10 @@ static void ms_audio_get_samples(ms_sample_data * msd, STREAMFILE *streamFile, i
                     frame_offset_b += 1;
                     if (flag) {
                         int new_skip = read_bitsBE_b(frame_offset_b, 10, streamFile);
-                        VGM_LOG("MS_SAMPLES: end_skip %i at 0x%"PRIx64" (bit 0x%"PRIx64")\n", new_skip, (off64_t)frame_offset_b/8, (off64_t)frame_offset_b);
-                        VGM_ASSERT(end_skip, "MS_SAMPLES: more than one end_skip (%i)\n", new_skip);//ignore, happens due to incorrect tilehdr_size
                         frame_offset_b += 10;
 
                         if (new_skip > samples_per_frame) /* from xmaencode  */
                             new_skip = samples_per_frame;
-
-                        end_skip = new_skip; /* always use last skip */
                     }
                 }
             }
@@ -610,26 +606,6 @@ static void ms_audio_get_samples(ms_sample_data * msd, STREAMFILE *streamFile, i
         msd->loop_start_sample = loop_start_frame * samples_per_frame + msd->loop_start_subframe * samples_per_subframe;
         msd->loop_end_sample = loop_end_frame * samples_per_frame + (msd->loop_end_subframe) * samples_per_subframe;
     }
-
-    //todo apply once FFmpeg decode is ok
-    // for XMA must internal skip 64 samples + apply skips + output extra 128 IMDCT samples) and remove skip_samples output
-#if 0
-    if (msd->xma_version == 1 || msd->xma_version == 2) {
-        msd->num_samples += 128; /* final extra IMDCT samples */
-        msd->num_samples -= start_skip; /* can be less but fixed to 512 in practice */
-        msd->num_samples -= end_skip;
-
-        /* from xma2encode tests this looks correct (probably XMA loops considering IMDCT delay)
-         * a full loop wav > xma makes start=384, then xma > wav writes "smpl" with start=0 */
-        if (msd->loop_flag) {
-            msd->loop_start_sample += 128;
-            msd->loop_start_sample -= start_skip;
-
-            msd->loop_end_sample += 128;
-            msd->loop_end_sample -= start_skip;
-        }
-    }
-#endif
 
     /* the above can't properly read skips for WMAPro ATM, but should fixed to 1 frame anyway */
     if (msd->xma_version == 0) {
