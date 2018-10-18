@@ -103,29 +103,18 @@ VGMSTREAM * init_vgmstream_wwise(STREAMFILE *streamFile) {
         if (ww.fmt_size < 0x12) goto fail;
         ww.format           = (uint16_t)read_16bit(ww.fmt_offset+0x00,streamFile);
 
-        if (ww.format == 0x0165) { /* XMA2WAVEFORMAT (always "fmt"+"XMA2", unlike .xma that may only have "XMA2") */
-            off_t xma2_offset;
-            if (!find_chunk(streamFile, 0x584D4132,first_offset,0, &xma2_offset,NULL, ww.big_endian, 0)) goto fail;
-            xma2_parse_xma2_chunk(streamFile, xma2_offset,&ww.channels,&ww.sample_rate, &ww.loop_flag, &ww.num_samples, &ww.loop_start_sample, &ww.loop_end_sample);
-        } else { /* WAVEFORMATEX */
-            ww.channels         = read_16bit(ww.fmt_offset+0x02,streamFile);
-            ww.sample_rate      = read_32bit(ww.fmt_offset+0x04,streamFile);
-            ww.average_bps      = read_32bit(ww.fmt_offset+0x08,streamFile);/* bytes per sec */
-            ww.block_align      = (uint16_t)read_16bit(ww.fmt_offset+0x0c,streamFile);
-            ww.bits_per_sample   = (uint16_t)read_16bit(ww.fmt_offset+0x0e,streamFile);
-            if (ww.fmt_size > 0x10 && ww.format != 0x0165 && ww.format != 0x0166) /* ignore XMAWAVEFORMAT */
-                ww.extra_size   = (uint16_t)read_16bit(ww.fmt_offset+0x10,streamFile);
-            /* channel bitmask, see AkSpeakerConfig.h (ex. 1ch uses FRONT_CENTER 0x4, 2ch FRONT_LEFT 0x1 | FRONT_RIGHT 0x2, etc) */
-            //if (ww.extra_size >= 6)
-            //    ww.channel_config = read_32bit(ww.fmt_offset+0x14,streamFile);
-        }
+	/* WAVEFORMATEX */
+	ww.channels         = read_16bit(ww.fmt_offset+0x02,streamFile);
+	ww.sample_rate      = read_32bit(ww.fmt_offset+0x04,streamFile);
+	ww.average_bps      = read_32bit(ww.fmt_offset+0x08,streamFile);/* bytes per sec */
+	ww.block_align      = (uint16_t)read_16bit(ww.fmt_offset+0x0c,streamFile);
+	ww.bits_per_sample   = (uint16_t)read_16bit(ww.fmt_offset+0x0e,streamFile);
+	if (ww.fmt_size > 0x10 && ww.format != 0x0165 && ww.format != 0x0166) /* ignore XMAWAVEFORMAT */
+	  ww.extra_size   = (uint16_t)read_16bit(ww.fmt_offset+0x10,streamFile);
 
         /* find loop info */
-        if (ww.format == 0x0166) { /* XMA2WAVEFORMATEX */
-            xma2_parse_fmt_chunk_extra(streamFile, ww.fmt_offset, &ww.loop_flag, &ww.num_samples, &ww.loop_start_sample, &ww.loop_end_sample, ww.big_endian);
-        }
-        else if (find_chunk(streamFile, 0x736D706C,first_offset,0, &loop_offset,&loop_size, ww.big_endian, 0)) { /*"smpl". common */
-            if (loop_size >= 0x34
+        if (find_chunk(streamFile, 0x736D706C,first_offset,0, &loop_offset,&loop_size, ww.big_endian, 0)) { /*"smpl". common */
+	  if (loop_size >= 0x34
                     && read_32bit(loop_offset+0x1c, streamFile)==1        /*loop count*/
                     && read_32bit(loop_offset+0x24+4, streamFile)==0) {
                 ww.loop_flag = 1;
@@ -203,18 +192,6 @@ VGMSTREAM * init_vgmstream_wwise(STREAMFILE *streamFile) {
     start_offset = ww.data_offset;
 
     switch(ww.codec) {
-        case PCM: /* common */
-            /* normally riff.c has priority but it's needed when .wem is used */
-            if (ww.fmt_size != 0x10 && ww.fmt_size != 0x18 && ww.fmt_size != 0x28) goto fail; /* old, new/Limbo (PC) */
-            if (ww.bits_per_sample != 16) goto fail;
-
-            vgmstream->coding_type = (ww.big_endian ? coding_PCM16BE : coding_PCM16LE);
-            vgmstream->layout_type = ww.channels > 1 ? layout_interleave : layout_none;
-            vgmstream->interleave_block_size = 0x02;
-
-            vgmstream->num_samples = pcm_bytes_to_samples(ww.data_size, ww.channels, ww.bits_per_sample);
-            break;
-
 #ifdef VGM_USE_VORBIS
         case VORBIS: {  /* common */
             /* Wwise uses custom Vorbis, which changed over time (config must be detected to pass to the decoder). */
@@ -354,81 +331,6 @@ VGMSTREAM * init_vgmstream_wwise(STREAMFILE *streamFile) {
             if (ww.truncated)
                 vgmstream->num_samples = vgmstream->num_samples * (ww.file_size - start_offset) / ww.data_size;
 
-            break;
-        }
-#endif
-
-        case DSP: {     /* Wii/3DS/WiiU */
-            off_t wiih_offset;
-            size_t wiih_size;
-            int i;
-
-            //if (ww.fmt_size != 0x28 && ww.fmt_size != ?) goto fail; /* old, new */
-            if (ww.bits_per_sample != 4) goto fail;
-
-            vgmstream->coding_type = coding_NGC_DSP;
-            vgmstream->layout_type = layout_interleave;
-            vgmstream->interleave_block_size = 0x08; /* ww.block_align = 0x8 in older Wwise, samples per block in newer Wwise */
-
-            /* find coef position */
-            if (find_chunk(streamFile, 0x57696948,first_offset,0, &wiih_offset,&wiih_size, ww.big_endian, 0)) { /*"WiiH"*/ /* older Wwise */
-                vgmstream->num_samples = dsp_bytes_to_samples(ww.data_size, ww.channels);
-                if (wiih_size != 0x2e * ww.channels) goto fail;
-            }
-            else if (ww.extra_size == 0x0c + ww.channels * 0x2e) { /* newer Wwise */
-                vgmstream->num_samples = read_32bit(ww.fmt_offset + 0x18, streamFile);
-                wiih_offset = ww.fmt_offset + 0x1c;
-                wiih_size = 0x2e * ww.channels;
-            }
-            else {
-                goto fail;
-            }
-
-            /* get coefs and default history */
-            dsp_read_coefs(vgmstream,streamFile,wiih_offset, 0x2e, ww.big_endian);
-            for (i=0; i < ww.channels; i++) {
-                vgmstream->ch[i].adpcm_history1_16 = read_16bitBE(wiih_offset + i * 0x2e + 0x24,streamFile);
-                vgmstream->ch[i].adpcm_history2_16 = read_16bitBE(wiih_offset + i * 0x2e + 0x26,streamFile);
-            }
-
-            break;
-        }
-
-        case HEVAG:     /* PSV */
-            /* changed values, another bizarre Wwise quirk */
-            //ww.block_align /* unknown (1ch=2, 2ch=4) */
-            //ww.bits_per_sample; /* unknown (0x10) */
-            //if (ww.bits_per_sample != 4) goto fail;
-
-            if (ww.fmt_size != 0x18) goto fail;
-            if (ww.big_endian) goto fail;
-
-            /* extra_data: size 0x06, @0x00: samples per block (0x1c), @0x04: channel config */
-
-            vgmstream->coding_type = coding_HEVAG;
-            vgmstream->layout_type = layout_interleave;
-            vgmstream->interleave_block_size = 0x10;
-
-            vgmstream->num_samples = ps_bytes_to_samples(ww.data_size, ww.channels);
-            break;
-
-#ifdef VGM_USE_ATRAC9
-        case ATRAC9: {  /* PSV/PS4 */
-            atrac9_config cfg = {0};
-
-            if (ww.fmt_size != 0x24) goto fail;
-            if (ww.extra_size != 0x12) goto fail;
-
-            cfg.channels = vgmstream->channels;
-            cfg.config_data = read_32bitBE(ww.fmt_offset+0x18,streamFile);
-            cfg.encoder_delay = read_32bit(ww.fmt_offset+0x20,streamFile);
-
-            vgmstream->codec_data = init_atrac9(&cfg);
-            if (!vgmstream->codec_data) goto fail;
-            vgmstream->coding_type = coding_ATRAC9;
-            vgmstream->layout_type = layout_none;
-
-            vgmstream->num_samples = read_32bit(ww.fmt_offset+0x1c,streamFile);
             break;
         }
 #endif
