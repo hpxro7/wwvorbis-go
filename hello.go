@@ -1,6 +1,6 @@
 package main
 
-// #cgo CFLAGS: -g -Wall
+// #cgo CFLAGS: -Wall
 // #include <stdlib.h>
 // #include "hello.h"
 import "C"
