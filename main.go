@@ -3,7 +3,6 @@ package main
 // #cgo CFLAGS: -Wall
 // #cgo LDFLAGS: -lvorbis -logg -lvorbisfile -lm
 // #include <stdlib.h>
-// #include "hello.h"
 // #include "streamfile.h"
 // #include "vgmstream.h"
 // #include "meta.h"
@@ -11,22 +10,26 @@ import "C"
 
 import (
 	"fmt"
+	"log"
 	"unsafe"
 )
 
-func main() {
-	p := C.malloc(C.sizeof_char * 20)
-	defer C.free(p)
+const inputFilename = "test.wem"
 
-	n := C.say_hello((*C.char)(p))
-	b := C.GoBytes(p, n)
-	fmt.Println(string(b))
+func main() {
+	fmt.Println("Decoding Wwise Vorbis file...")
 
 	desc := (*C.char)(C.malloc(C.sizeof_char * 0x100))
 	defer C.free(unsafe.Pointer(desc))
-	f := C.open_stdio_streamfile(C.CString("test.wem"))
-	fmt.Printf("Streamfile: Type=%T, Value=%v\n\n", f, f)
+	f := C.open_stdio_streamfile(C.CString(inputFilename))
+	if f == nil {
+		log.Fatal("Could not open:", inputFilename)
+	}
+
 	s := C.init_vgmstream_wwise(f)
+	if s == nil {
+		log.Fatal("Could not decode as Wwise Vorbis:", inputFilename)
+	}
 	C.describe_vgmstream(s, (*C.char)(desc), 0x100)
-	fmt.Println("Descriptor: ", C.GoString(desc))
+	fmt.Println(C.GoString(desc))
 }
