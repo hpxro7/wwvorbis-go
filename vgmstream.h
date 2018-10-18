@@ -2,6 +2,10 @@
  * vgmstream.h - definitions for VGMSTREAM, encapsulating a multi-channel, looped audio stream
  */
 
+#ifndef VGM_USE_VORBIS
+#define VGM_USE_VORBIS
+#endif
+
 #ifndef _VGMSTREAM_H
 #define _VGMSTREAM_H
 

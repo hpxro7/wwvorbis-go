@@ -1,9 +1,11 @@
 package main
 
 // #cgo CFLAGS: -Wall
+// #cgo LDFLAGS: -lvorbis -logg -lvorbisfile -lm
 // #include <stdlib.h>
 // #include "hello.h"
 import "C"
+
 import (
 	"fmt"
 )

@@ -11,6 +11,9 @@ static void try_dual_file_stereo(VGMSTREAM * opened_vgmstream, STREAMFILE *strea
 
 /* List of functions that will recognize files */
 VGMSTREAM * (*init_vgmstream_functions[])(STREAMFILE *streamFile) = {
+#ifdef VGM_USE_VORBIS
+    init_vgmstream_ogg_vorbis,
+#endif								     
     init_vgmstream_wwise,
 };
 
